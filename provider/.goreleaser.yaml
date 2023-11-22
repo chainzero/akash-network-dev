@@ -1,0 +1,191 @@
+project_name: provider
+env:
+  - GO111MODULE=on
+  - DOCKER_CLI_EXPERIMENTAL="enabled"
+  - CGO_ENABLED=1
+builds:
+  - id: provider-services-darwin-arm64
+    binary: provider-services
+    main: ./cmd/provider-services
+    goarch:
+      - arm64
+    goos:
+      - darwin
+    env:
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    flags:
+      - "-mod={{ .Env.MOD }}"
+      - "-tags={{ .Env.BUILD_TAGS }}"
+      - -trimpath
+    ldflags:
+      - "{{ .Env.BUILD_VARS }}"
+      - "{{ .Env.STRIP_FLAGS }}"
+      - "-linkmode={{ .Env.LINKMODE }}"
+  - id: provider-services-darwin-amd64
+    binary: provider-services
+    main: ./cmd/provider-services
+    goarch:
+      - amd64
+    goos:
+      - darwin
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+    flags:
+      - "-mod={{ .Env.MOD }}"
+      - "-tags={{ .Env.BUILD_TAGS }}"
+      - -trimpath
+    ldflags:
+      - "{{ .Env.BUILD_VARS }}"
+      - "{{ .Env.STRIP_FLAGS }}"
+      - "-linkmode={{ .Env.LINKMODE }}"
+  - id: provider-services-linux-arm64
+    binary: provider-services
+    main: ./cmd/provider-services
+    goarch:
+      - arm64
+    goos:
+      - linux
+    env:
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+    flags:
+      - "-mod={{ .Env.MOD }}"
+      - "-tags={{ .Env.BUILD_TAGS }}"
+      - -trimpath
+    ldflags:
+      - "{{ .Env.BUILD_VARS }}"
+      - "{{ .Env.STRIP_FLAGS }}"
+      - "-linkmode={{ .Env.LINKMODE }}"
+      - -extldflags "-lc -lrt -lpthread --static"
+  - id: provider-services-linux-amd64
+    binary: provider-services
+    main: ./cmd/provider-services
+    goarch:
+      - amd64
+    goos:
+      - linux
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+    flags:
+      - "-mod={{ .Env.MOD }}"
+      - "-tags={{ .Env.BUILD_TAGS }}"
+      - -trimpath
+    ldflags:
+      - "{{ .Env.BUILD_VARS }}"
+      - "{{ .Env.STRIP_FLAGS }}"
+      - "-linkmode={{ .Env.LINKMODE }}"
+      - -extldflags "-lc -lrt -lpthread --static"
+universal_binaries:
+  - id: darwin-universal
+    ids:
+      - provider-services-darwin-arm64
+      - provider-services-darwin-amd64
+    replace: true
+    name_template: "provider-services"
+archives:
+  - id: provider-services-version
+    builds:
+      - darwin-universal
+      - provider-services-linux-arm64
+      - provider-services-linux-amd64
+    name_template: "provider-services_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: false
+    format: zip
+    files:
+      - none*
+  - id: provider-services
+    builds:
+      - darwin-universal
+      - provider-services-linux-arm64
+      - provider-services-linux-amd64
+    name_template: "provider-services_{{ .Os }}_{{ .Arch }}"
+    wrap_in_directory: false
+    format: zip
+    files:
+      - none*
+checksum:
+  # You can change the name of the checksums file.
+  # Default is `{{ .ProjectName }}_{{ .Version }}_checksums.txt`.
+  name_template: "provider-services_{{ .Version }}_checksums.txt"
+
+dockers:
+  - dockerfile: Dockerfile
+    use: buildx
+    goarch: amd64
+    goos: linux
+    build_flag_templates:
+      - --pull
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/akash-network/provider
+      - --label=org.opencontainers.image.source=https://github.com/akash-network/provider
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+    image_templates:
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .ShortCommit }}-amd64"
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .Version }}-amd64"
+      - "{{ .Env.DOCKER_IMAGE }}:latest-amd64"
+  - dockerfile: Dockerfile
+    use: buildx
+    goarch: arm64
+    goos: linux
+    build_flag_templates:
+      - --pull
+      - --platform=linux/arm64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/akash-network/provider
+      - --label=org.opencontainers.image.source=https://github.com/akash-network/provider
+      - --label=org.opencontainers.image.version={{ .Version }}
+      - --label=org.opencontainers.image.created={{ time "2006-01-02T15:04:05Z07:00" }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+    image_templates:
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .ShortCommit }}-arm64"
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .Version }}-arm64"
+      - "{{ .Env.DOCKER_IMAGE }}:latest-arm64"
+docker_manifests:
+  - name_template: "{{ .Env.DOCKER_IMAGE }}:{{ .ShortCommit }}"
+    image_templates:
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .ShortCommit }}-amd64"
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .ShortCommit }}-arm64"
+  - name_template: "{{ .Env.DOCKER_IMAGE }}:{{ .Version }}"
+    image_templates:
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .Version }}-amd64"
+      - "{{ .Env.DOCKER_IMAGE }}:{{ .Version }}-arm64"
+  - name_template: "{{ .Env.DOCKER_IMAGE }}:latest"
+    image_templates:
+      - "{{ .Env.DOCKER_IMAGE }}:latest-amd64"
+      - "{{ .Env.DOCKER_IMAGE }}:latest-arm64"
+
+nfpms:
+  - id: w/version
+    vendor: "Akash Network"
+    homepage: "https://akash.network"
+    maintainer: "Akash Network <hello@akash.network>"
+    file_name_template: "provider-services_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - deb
+      - rpm
+    license: Apache 2.0
+  - id: wo/version
+    vendor: "Akash Network"
+    homepage: "https://akash.network"
+    maintainer: "Akash Network <hello@akash.network>"
+    file_name_template: "provider-services_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - deb
+      - rpm
+    license: Apache 2.0
+
+release:
+  github:
+    owner: akash-network
+    name: provider
+  prerelease: auto
+  mode: replace
+  draft: false
