@@ -536,11 +536,29 @@ func createStatusHandler(log log.Logger, sclient provider.StatusClient, provider
 func createFeaturesHandler(log log.Logger, sclient provider.StatusClient, providerAddr sdk.Address) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 
-		resp, err := http.Get("http://localhost:8080/getClusterState")
-		if err != nil {
-			fmt.Println(err)
-
+		// URLs slice and use in range allows execution in both dev and prod
+		urls := []string{
+			"http://inventory-operator.akash-services.svc.cluster.local:8080/getClusterState",
+			"http://localhost:8080/getClusterState",
 		}
+
+		var resp *http.Response
+		var err error
+		for _, url := range urls {
+			resp, err = http.Get(url)
+			if err != nil {
+				fmt.Printf("Failed to get '%s': %v\n", url, err)
+				continue
+			}
+			defer resp.Body.Close()
+			break
+		}
+
+		if err != nil {
+			fmt.Printf("All attempts failed: %v\n", err)
+			return
+		}
+
 		defer resp.Body.Close()
 
 		bodyBytes, err := ioutil.ReadAll(resp.Body)
@@ -548,8 +566,8 @@ func createFeaturesHandler(log log.Logger, sclient provider.StatusClient, provid
 			fmt.Println(err)
 		}
 
-		bodyString := string(bodyBytes)
-		fmt.Println("response body from api: ", bodyString)
+		// bodyString := string(bodyBytes)
+		// fmt.Println("response body from api: ", bodyString)
 
 		var clusterState v1.Cluster
 		err = json.Unmarshal(bodyBytes, &clusterState)

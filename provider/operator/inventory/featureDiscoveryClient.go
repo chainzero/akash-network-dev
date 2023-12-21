@@ -53,8 +53,6 @@ func (ccd *ConcurrentClusterData) UpdateNode(podUID string, node *v1.Node) {
 	ccd.Lock()
 	defer ccd.Unlock()
 
-	fmt.Println("Node within UpdateNode: ", node)
-
 	if nodeIndex, ok := ccd.podNodeMap[podUID]; ok {
 		// Node exists, update it
 		ccd.cluster.Nodes[nodeIndex] = *node
@@ -114,12 +112,17 @@ func watchPods(clientset *kubernetes.Clientset, stopCh <-chan struct{}, clusterD
 	errCh := make(chan error, 1) // Buffered error channel
 	var wg sync.WaitGroup        // WaitGroup to track goroutines
 
-	watcher, err := clientset.CoreV1().Pods(daemonSetNamespace).Watch(context.TODO(), metav1.ListOptions{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	watcher, err := clientset.CoreV1().Pods(daemonSetNamespace).Watch(ctx, metav1.ListOptions{
 		LabelSelector: daemonSetLabelSelector,
 	})
+
 	if err != nil {
 		return fmt.Errorf("error setting up Kubernetes watcher: %w", err)
 	}
+
 	defer watcher.Stop()
 
 	for {
@@ -164,6 +167,7 @@ func watchPods(clientset *kubernetes.Clientset, stopCh <-chan struct{}, clusterD
 						}
 					}()
 				}
+				log.Printf("Pod added: %s, UID: %s\n", pod.Name, pod.UID)
 			case Deleted:
 				clusterData.RemoveNode(string(pod.UID))
 				log.Printf("Pod deleted: %s, UID: %s\n", pod.Name, pod.UID)
@@ -246,7 +250,7 @@ func printCluster() {
 	}
 
 	// Print the cluster state
-	fmt.Printf("Cluster State: %+v\n\n\n", cluster)
+	log.Printf("Cluster State: %+v\n\n", cluster)
 }
 
 func FeatureDiscovery() {
@@ -265,11 +269,15 @@ func FeatureDiscovery() {
 
 	clusterData := GetInstance()
 
+	var wg sync.WaitGroup
+
 	// Start the watcher in a goroutine with error handling
 	errCh := make(chan error, 1)
 	stopCh := make(chan struct{})
+	wg.Add(1) // Increment the WaitGroup counter before starting the goroutine
 	go func() {
-		defer close(errCh) // Ensure the channel is closed properly
+		defer wg.Done()    // Decrement the counter when the goroutine completes
+		defer close(errCh) // Ensure the error channel is closed properly
 		if err := watchPods(clientset, stopCh, clusterData); err != nil {
 			errCh <- err
 		}
@@ -283,16 +291,6 @@ func FeatureDiscovery() {
 		}
 	}()
 
-	// Handle errors in a non-blocking manner
-	go func() {
-		for err := range errCh {
-			if err != nil {
-				log.Printf("Error from watchPods: %v", err)
-				// Additional error handling logic here
-			}
-		}
-	}()
-
 	// Start a ticker to periodically check/print the cluster state
 	ticker := time.NewTicker(nodeUpdateInterval)
 	go func() {
@@ -301,15 +299,15 @@ func FeatureDiscovery() {
 		}
 	}()
 
-	// API endpoint which serves feature disxovery data to Akash Provider
+	// API endpoint which serves feature discovery data to Akash Provider
 	router := mux.NewRouter()
 	router.HandleFunc("/getClusterState", getClusterStateHandler).Methods("GET")
 
 	log.Fatal(http.ListenAndServe(":8080", router))
 
-	// Block the main function from exiting
-	// Remove when running into larger code base - this is only necessary when running code in isolation
-	<-make(chan struct{})
+	// Wait for all goroutines to finish before closing the stop channel
+	wg.Wait()
+	close(stopCh) // Close the stop channel only after all goroutines are done
 }
 
 // GetInstance returns the singleton instance of ConcurrentClusterData.
